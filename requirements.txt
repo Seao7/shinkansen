@@ -1,0 +1,6 @@
+streamlit
+pandas
+scikit-learn
+seaborn
+matplotlib
+numpy<2  # Pinned to version 1.x to fix the compatibility error
