@@ -292,7 +292,6 @@ def generate_pdf_report(rgb_img, oil_mask, wavelengths, red_idx, green_idx, blue
     
     return pdf_path
 
-
 def process_single_file(base_path, component_type, model_artifacts, file_index=0, total_files=1):
     """Process a single file pair and return results"""
     try:
