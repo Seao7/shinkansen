@@ -401,7 +401,7 @@ component_type = st.sidebar.radio(
 # Update component type in session state
 if component_type != st.session_state.current_component:
     st.session_state.current_component = component_type
-    st.experimental_rerun()
+    st.rerun()
 
 # ---- Load Model for Selected Component ----
 with st.spinner(f"Loading {component_type} model..."):
