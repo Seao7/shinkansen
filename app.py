@@ -148,7 +148,9 @@ def predict_oil_pixels(rad_data, wavelengths, model_artifacts):
     
     # Apply background correction if available
     if background is not None and 'radiance' in background:
-        rad_data = rad_data / background['radiance']
+        bg_radiance = background['radiance'].reshape(B, 1, 1)
+        bg_radiance = np.where(bg_radiance == 0, 1.0, bg_radiance)  # Replace zeros with 1
+        rad_data = rad_data / bg_radiance
         rad_data = np.nan_to_num(rad_data, nan=1.0, posinf=1.0, neginf=1.0)
     
     # Reshape data: (B, H, W) -> (H*W, B)
@@ -199,6 +201,101 @@ def find_matching_pairs(folder_path):
             pairs.append((str(dat_file), str(txt_file)))
     
     return pairs
+
+
+def generate_combined_pdf_report(results_list, filename, model_name=None, component_type=None):
+    """Generate a combined PDF report with all results"""
+    
+    pdf_path = os.path.join(tempfile.gettempdir(), filename)
+    
+    with PdfPages(pdf_path) as pdf:
+        fig = plt.figure(figsize=(8.5, 11))
+        title = f'Hyperspectral Oil Detection Report - {component_type}' if component_type else 'Hyperspectral Oil Detection Report'
+        fig.suptitle(title, fontsize=24, fontweight='bold', y=0.95)
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        plt.text(0.5, 0.85, f'Generated: {timestamp}', ha='center', fontsize=14)
+        
+        total_files = len(results_list)
+        avg_oil_percentage = np.mean([r['oil_percentage'] for r in results_list])
+        
+        summary_text = f"""
+        Batch Analysis Summary
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        
+        Total Files Processed: {total_files}
+        Average Oil Coverage: {avg_oil_percentage:.2f}%
+        Component Type: {component_type}
+        Model Used: {model_name if model_name else 'Placeholder'}
+        
+        Files Analyzed:
+        """
+        
+        for i, result in enumerate(results_list[:10], 1):  # Show first 10
+            summary_text += f"\n        {i}. {result['file_name']} - {result['oil_percentage']:.2f}%"
+        
+        if total_files > 10:
+            summary_text += f"\n        ... and {total_files - 10} more files"
+        
+        plt.text(0.1, 0.7, summary_text, fontsize=11, verticalalignment='top', 
+                family='monospace')
+        plt.axis('off')
+        pdf.savefig(fig, bbox_inches='tight')
+        plt.close()
+        
+        for result in results_list:
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.suptitle(f"File: {result['file_name']}", fontsize=18, fontweight='bold', y=0.95)
+            
+            model_info = f"\nModel Used: {model_name}" if model_name else "\nModel Used: Placeholder"
+            file_summary = f"""
+            Analysis Details
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            {model_info}
+            Component Type: {component_type}
+            
+            RGB Composite Settings:
+            • Red Channel: {result['wavelengths'][result['red_idx']]:.1f} nm (Band {result['red_idx']})
+            • Green Channel: {result['wavelengths'][result['green_idx']]:.1f} nm (Band {result['green_idx']})
+            • Blue Channel: {result['wavelengths'][result['blue_idx']]:.1f} nm (Band {result['blue_idx']})
+            
+            Detection Results:
+            • Oil Coverage: {result['oil_percentage']:.2f}%
+            • Total Pixels: {result['oil_mask'].size:,}
+            • Oil Pixels Detected: {int(result['oil_mask'].sum()):,}
+            """
+            
+            plt.text(0.1, 0.75, file_summary, fontsize=11, verticalalignment='top', 
+                    family='monospace')
+            plt.axis('off')
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+            
+            fig, ax = plt.subplots(figsize=(8.5, 11))
+            ax.imshow(result['rgb_img'])
+            ax.set_title(f"{result['file_name']} - RGB Composite", fontsize=14, fontweight='bold', pad=20)
+            ax.axis('off')
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+            
+            fig, ax = plt.subplots(figsize=(8.5, 11))
+            ax.imshow(result['rgb_img'])
+            ax.imshow(result['oil_mask'], cmap='Reds', alpha=0.5, vmin=0, vmax=1)
+            ax.set_title(f"{result['file_name']} - Oil Detection", fontsize=14, fontweight='bold', pad=20)
+            ax.axis('off')
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+            
+            if result['probability_map'] is not None:
+                fig, ax = plt.subplots(figsize=(8.5, 11))
+                im = ax.imshow(result['probability_map'], cmap='hot', vmin=0, vmax=1)
+                ax.set_title(f"{result['file_name']} - Probability Map", fontsize=14, fontweight='bold', pad=20)
+                ax.axis('off')
+                plt.colorbar(im, ax=ax, label='Probability', fraction=0.046, pad=0.04)
+                pdf.savefig(fig, bbox_inches='tight')
+                plt.close()
+    
+    return pdf_path
 
 
 def generate_pdf_report(rgb_img, oil_mask, wavelengths, red_idx, green_idx, blue_idx, 
@@ -401,7 +498,7 @@ component_type = st.sidebar.radio(
 # Update component type in session state
 if component_type != st.session_state.current_component:
     st.session_state.current_component = component_type
-    st.rerun()
+    load_model.clear()
 
 # ---- Load Model for Selected Component ----
 with st.spinner(f"Loading {component_type} model..."):
@@ -597,7 +694,8 @@ if st.session_state.oil_results:
                     label="📥 Download PDF Report",
                     data=pdf_data,
                     file_name=pdf_filename,
-                    mime="application/pdf"                )
+                    mime="application/pdf"
+                )
         else:
             # Batch download - create ZIP of all PDFs
             st.markdown("**Download all reports as ZIP**")
