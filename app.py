@@ -474,6 +474,8 @@ else:  # Batch Folder Upload
         # Find matching pairs
         dat_files = list(Path(extract_dir).rglob("*.dat"))
         for dat_file in dat_files:
+            if dat_file.name.startswith('._'):
+                continue
             txt_file = dat_file.with_suffix(".txt")
             if txt_file.exists():
                 base_path = str(dat_file.with_suffix(""))
