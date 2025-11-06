@@ -398,10 +398,11 @@ component_type = st.sidebar.radio(
     help="Choose the type of component you're analyzing"
 )
 
-# Update component type in session state
+# Update component type in session state and clear results
 if component_type != st.session_state.current_component:
     st.session_state.current_component = component_type
-    st.rerun()
+    st.session_state.oil_results = []  # Clear old results
+    load_model.clear()  # Clear cached model
 
 # ---- Load Model for Selected Component ----
 with st.spinner(f"Loading {component_type} model..."):
