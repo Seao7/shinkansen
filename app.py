@@ -456,30 +456,47 @@ if upload_mode == "Single File Pair":
             st.success(f"✅ Files uploaded successfully: `{dat_name}`")
 
 else:  # Batch Folder Upload
-    st.markdown("Upload a ZIP file containing multiple .dat and .txt file pairs")
+    st.markdown("Upload a folder containing multiple .dat and .txt file pairs")
     
-    zip_file = st.file_uploader("Upload ZIP folder", type="zip", key="batch_zip")
+    uploaded_files = st.file_uploader(
+        "Select folder to upload", 
+        accept_multiple_files="directory",
+        type=["dat", "txt"],
+        key="batch_folder"
+    )
     
-    if zip_file:
+    if uploaded_files:
+        # Create temporary directory
         tmp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(tmp_dir, "upload.zip")
-        with open(zip_path, "wb") as f:
-            f.write(zip_file.read())
         
-        # Extract ZIP
-        extract_dir = os.path.join(tmp_dir, "extracted")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
+        # Group files by base name
+        file_dict = {}
+        for uploaded_file in uploaded_files:
+            # Skip macOS metadata files
+            if uploaded_file.name.startswith('._'):
+                continue
+            
+            # Get the relative path to maintain folder structure
+            file_path = os.path.join(tmp_dir, uploaded_file.name)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            
+            # Write file to temp directory
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.read())
+            
+            # Track files by base name
+            base_name = os.path.splitext(uploaded_file.name)[0]
+            ext = os.path.splitext(uploaded_file.name)[1]
+            
+            if base_name not in file_dict:
+                file_dict[base_name] = {}
+            file_dict[base_name][ext] = file_path
         
         # Find matching pairs
-        dat_files = list(Path(extract_dir).rglob("*.dat"))
-        for dat_file in dat_files:
-            if dat_file.name.startswith('._'):
-                continue
-            txt_file = dat_file.with_suffix(".txt")
-            if txt_file.exists():
-                base_path = str(dat_file.with_suffix(""))
-                file_name = dat_file.stem
+        for base_name, files in file_dict.items():
+            if '.dat' in files and '.txt' in files:
+                base_path = files['.dat'].replace('.dat', '')
+                file_name = os.path.basename(base_name)
                 file_pairs.append((base_path, file_name))
         
         if file_pairs:
@@ -488,7 +505,7 @@ else:  # Batch Folder Upload
                 for _, name in file_pairs:
                     st.write(f"• {name}")
         else:
-            st.error("❌ No matching .dat/.txt file pairs found in the ZIP")
+            st.error("❌ No matching .dat/.txt file pairs found in the folder")
 
 # ---- Process Files ----
 if file_pairs and st.button("🔍 Run Oil Detection", type="primary"):
